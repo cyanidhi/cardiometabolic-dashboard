@@ -43,7 +43,7 @@ main {
   margin: 1rem auto 2rem;
   padding: 1.5rem 1.75rem 2.5rem;
   background: linear-gradient(to bottom, #f9fafb, #eef2ff);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 18px 40px rgba(255, 255, 255, 0.18);
   border-radius: 1.25rem;
 }
 
@@ -147,7 +147,7 @@ input[type="number"] {
   border: 1px solid #d1d5db;
   padding: 0.3rem 0.55rem;
   font-size: 0.8rem;
-  color: var(--text-main);   /* keep text black */
+  color: var(--text-main); /* keep text black */
   background: #f9fafb;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
@@ -344,6 +344,21 @@ svg {
   width: 100%;
   height: 100%;
   overflow: visible;
+}
+
+/* Tooltip ------------------------------------------------------------- */
+
+.chart-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: #111827;
+  color: #f9fafb;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.25);
+  z-index: 9999;
+  white-space: nowrap;
 }
 
 /* Profile summary + personalized area -------------------------------- */
@@ -616,13 +631,15 @@ svg {
           <div class="kpi-subtitle" id="stats-kpi-subtitle">
             Select a health issue to view prevalence and disparities in the filtered population.
           </div>
-<div class="ci-toggle-wrap">
-  <label class="switch">
-    <input type="checkbox" id="ci-toggle" checked aria-label="Show 95% confidence intervals">
-    <span class="slider"></span>
-  </label>
-  <span>Show 95% confidence intervals</span>
-</div>
+          <div class="ci-toggle-wrap">
+            <label class="switch">
+              <input type="checkbox" id="ci-toggle" checked aria-label="Show 95% confidence intervals">
+              <span class="slider"></span>
+            </label>
+            <span>Show 95% confidence intervals</span>
+          </div>
+        </div>
+      </div>
 
       <!-- High-level KPIs for filtered population -->
       <div class="kpi-row" id="stats-kpis">
@@ -701,8 +718,15 @@ const focusState = {
   bmi: null,
 };
 
-// Global flag for CI toggle
-let showCI = false;
+// Global flag for CI toggle (true to match checked switch)
+let showCI = true;
+
+// Shared tooltip for all charts
+const tooltip = d3
+  .select("body")
+  .append("div")
+  .attr("class", "chart-tooltip")
+  .style("opacity", 0);
 
 // ---------------------------------------------------------------------
 // Tabs: switch between "Your Profile" and "General Statistics"
@@ -917,6 +941,30 @@ d3.csv("brfss2015_health_clean.csv")
           return d.key === focusKey ? 1 : 0.25;
         });
 
+      // Tooltip for all bars
+      bars
+        .on("mousemove.tooltip", (event, d) => {
+          const pct = (d.prevalence * 100).toFixed(1);
+          let text = `${d.key}: ${pct}%`;
+          if (d.total != null) {
+            text += ` (n = ${d.total})`;
+          }
+          if (showCI && d.ciLow != null && d.ciHigh != null) {
+            const low = (d.ciLow * 100).toFixed(1);
+            const high = (d.ciHigh * 100).toFixed(1);
+            text += `<br>95% CI: ${low}–${high}%`;
+          }
+
+          tooltip
+            .style("opacity", 1)
+            .style("left", event.clientX + 12 + "px")
+            .style("top", event.clientY + 12 + "px")
+            .html(text);
+        })
+        .on("mouseleave.tooltip", () => {
+          tooltip.style("opacity", 0);
+        });
+
       // Clicking a bar focuses on that group; clicking again resets.
       if (focusKeyName) {
         bars
@@ -1060,7 +1108,7 @@ d3.csv("brfss2015_health_clean.csv")
       svg.append("g").call(xAxis);
       svg.append("g").call(yAxis);
 
-      svg
+      const bars = svg
         .selectAll("rect.bar")
         .data(rows)
         .enter()
@@ -1073,6 +1121,21 @@ d3.csv("brfss2015_health_clean.csv")
         .attr("fill", (d) =>
           d.key === "Your profile group" ? bluePalette[0] : bluePalette[3]
         );
+
+      // Tooltip for mini chart
+      bars
+        .on("mousemove.tooltip", (event, d) => {
+          const pct = (d.prevalence * 100).toFixed(1);
+          const text = `${d.key}: ${pct}%`;
+          tooltip
+            .style("opacity", 1)
+            .style("left", event.clientX + 12 + "px")
+            .style("top", event.clientY + 12 + "px")
+            .html(text);
+        })
+        .on("mouseleave.tooltip", () => {
+          tooltip.style("opacity", 0);
+        });
 
       svg
         .append("text")
@@ -1472,9 +1535,10 @@ d3.csv("brfss2015_health_clean.csv")
       updateStats();
     });
 
-    // CI toggle checkbox
+    // CI toggle switch
     const ciToggleEl = document.getElementById("ci-toggle");
     if (ciToggleEl) {
+      showCI = ciToggleEl.checked;
       ciToggleEl.addEventListener("change", (e) => {
         showCI = e.target.checked;
         updateStats();
